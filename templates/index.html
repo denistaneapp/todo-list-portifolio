@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ translations['title'] }}</title>  <!-- Use the title from translations / 翻訳からタイトルを使用 -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>{{ translations['title'] }}</h1>  <!-- Display the translated title / 翻訳されたタイトルを表示 -->
+            <div class="language-selector">
+                <a href="?lang=en">EN</a> |
+                <a href="?lang=ja">JA</a> |
+                <a href="?lang=es">ES</a> |
+                <a href="?lang=pt">PT</a>  <!-- Links to change language / 言語を変更するリンク -->
+            </div>
+            <button id="toggle-mode" class="btn">{{ translations['toggle_mode'] }}</button>
+        </header>
+        <div class="content">
+            <div class="left-panel">
+                <div class="task-form">
+                    <input type="text" id="new-task" placeholder="{{ translations['new_task_placeholder'] }}">
+                    <input type="text" id="new-category" placeholder="{{ translations['new_category_placeholder'] }}">
+                    <select id="category-select">
+                        <option value="">{{ translations['select_category'] }}</option>
+                    </select>
+                    <select id="task-priority">
+                        <option value="Alta">{{ translations['priority_high'] }}</option>
+                        <option value="Média">{{ translations['priority_medium'] }}</option>
+                        <option value="Baixa">{{ translations['priority_low'] }}</option>
+                    </select>
+                    <input type="date" id="task-date">
+                    <button id="add-task" class="btn">{{ translations['add_task'] }}</button>
+                </div>
+                <div class="task-filters">
+                    <select id="filter-priority">
+                        <option value="">{{ translations['all_priorities'] }}</option>
+                        <option value="Alta">{{ translations['priority_high'] }}</option>
+                        <option value="Média">{{ translations['priority_medium'] }}</option>
+                        <option value="Baixa">{{ translations['priority_low'] }}</option>
+                    </select>
+                    <button id="apply-filters" class="btn">{{ translations['apply_filters'] }}</button>
+                </div>
+                <button id="export-tasks" class="btn">{{ translations['export_tasks'] }}</button>
+            </div>
+            <div class="middle-panel">
+                <ul id="task-list" class="task-list"></ul>
+                <div id="pagination" style="display: none;">
+                    <button id="prev-page" class="btn">{{ translations['page'] }} Previous</button>
+                    <span id="page-number">{{ translations['page'] }} 1</span>
+                    <button id="next-page" class="btn">{{ translations['page'] }} Next</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let currentPage = 1;
+        const limit = 5;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTasks(currentPage);
+
+            document.getElementById('prev-page').addEventListener('click', function() {
+                if (currentPage > 1) {
+                    currentPage--;
+                    loadTasks(currentPage);
+                }
+            });
+
+            document.getElementById('next-page').addEventListener('click', function() {
+                currentPage++;
+                loadTasks(currentPage);
+            });
+
+            document.getElementById('add-task').addEventListener('click', function() {
+                const taskText = document.getElementById('new-task').value;
+                const newCategory = document.getElementById('new-category').value;
+                const selectedCategory = document.getElementById('category-select').value;
+                const taskPriority = document.getElementById('task-priority').value;
+                const taskDate = document.getElementById('task-date').value;
+
+                const category = newCategory || selectedCategory;
+
+                fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: taskText,
+                        category: category,
+                        priority: taskPriority,
+                        date: taskDate,
+                        color: '#621fb5'  // Default color for task / タスクのデフォルト色
+                    })
+                })
+                .then(response => response.json())
+                .then(task => {
+                    loadTasks(currentPage);
+                    document.getElementById('new-task').value = '';
+                    document.getElementById('new-category').value = '';
+                    document.getElementById('task-date').value = '';
+                });
+            });
+
+            document.getElementById('apply-filters').addEventListener('click', function() {
+                loadTasks(currentPage);
+            });
+
+            document.getElementById('export-tasks').addEventListener('click', function() {
+                window.location.href = '/api/export';
+            });
+
+            document.getElementById('toggle-mode').addEventListener('click', function() {
+                document.body.classList.toggle('light-mode');
+            });
+        });
+
+        function completeTask(taskId) {
+            fetch(`/api/tasks/${taskId}/complete`, {
+                method: 'PUT'
+            })
+            .then(() => {
+                loadTasks(currentPage);
+            });
+        }
+
+        function loadTasks(page) {
+            const priorityFilter = document.getElementById('filter-priority').value;
+
+            fetch(`/api/tasks?page=${page}&limit=${limit}&priority=${priorityFilter}`)
+                .then(response => response.json())
+                .then(data => {
+                    const tasks = data.tasks;
+                    const totalPages = data.total_pages;
+
+                    const taskList = document.getElementById('task-list');
+                    taskList.innerHTML = '';
+
+                    tasks.forEach((task, index) => {
+                        addTaskToList(task, index + 1 + (page - 1) * limit);
+                    });
+
+                    document.getElementById('page-number').textContent = `{{ translations['page'] }} ${currentPage}`;
+
+                    if (totalPages > 1) {
+                        document.getElementById('pagination').style.display = 'flex';
+                    } else {
+                        document.getElementById('pagination').style.display = 'none';
+                    }
+                });
+        }
+
+        function addTaskToList(task, taskNumber) {
+            const li = document.createElement('li');
+            li.style.backgroundColor = task.completed ? '#808080' : task.color;
+            li.innerHTML = `
+                <span>${taskNumber}. ${task.text} - ${task.category} - ${task.priority} - ${task.date}</span>
+                <button class="complete-task">{{ translations['completed'] }}</button>
+                <button class="edit-task">{{ translations['edit'] }}</button>
+                <button class="delete-task">{{ translations['delete'] }}</button>
+            `;
+            li.querySelector('.complete-task').addEventListener('click', () => completeTask(task.id));
+            li.querySelector('.edit-task').addEventListener('click', () => editTask(task));
+            li.querySelector('.delete-task').addEventListener('click', () => {
+                deleteTask(task.id);
+                loadTasks(currentPage);
+            });
+            document.getElementById('task-list').appendChild(li);
+        }
+
+        function editTask(task) {
+            const newText = prompt("Edit the task:", task.text);
+            const newCategory = prompt("Edit the category:", task.category);
+            const newPriority = prompt("Edit the priority (Alta, Média, Baixa):", task.priority);
+            const newDate = prompt("Edit the date (YYYY-MM-DD):", task.date);
+
+            fetch(`/api/tasks/${task.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    text: newText,
+                    category: newCategory,
+                    priority: newPriority,
+                    date: newDate
+                })
+            })
+            .then(response => response.json())
+            .then(updatedTask => {
+                loadTasks(currentPage);
+            });
+        }
+
+        function deleteTask(taskId) {
+            if (confirm("Are you sure you want to delete this task?")) {
+                fetch(`/api/tasks/${taskId}`, {
+                    method: 'DELETE'
+                })
+                .then(() => {
+                    loadTasks(currentPage);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
